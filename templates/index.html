@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PDF Malware Scanner</title>
+    <link href="https://bootswatch.com/4/darkly/bootstrap.min.css" rel="stylesheet"> <!-- Bootstrap Darkly for dark theme -->
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+    <style>
+        body {
+            background-color: #1e1e1e;  /* Dark background for consistency */
+            color: #f0f0f0;  /* Light text for readability */
+        }
+        .container-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+        .scan-block {
+            display: flex;
+            flex-direction: column; /* Changed from row to column to stack elements vertically */
+            align-items: center;
+            background-color: #2d2d2d;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+            transition: transform 0.3s;
+        }
+        .scan-block:hover {
+            transform: translateY(-5px);
+        }
+        .scan-form {
+            flex: 1;
+            display: flex;
+            flex-direction: column; /* Changed from row to column to stack elements vertically */
+            align-items: center;
+            gap: 15px;  /* Add some space between elements */
+        }
+        .scan-form .form-group {
+            width: 100%; /* Adjust width to fill the parent container */
+            margin-bottom: 10px; /* Add margin for spacing */
+        }
+        .scan-form button {
+            flex-shrink: 0;
+            margin-top: 15px; /* Add margin to separate button from CAPTCHA */
+        }
+        .info-card, .faq-card {
+            background-color: #3a3a3a;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+            animation: fadeIn 1s;
+        }
+        .info-card h2, .faq-card h2 {
+            color: #ffdd57;  /* Golden color for section titles */
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        .history-item {
+            background-color: #2d2d2d;  /* Dark background for history items */
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        .alert-icon {
+            font-size: 1rem;  /* Smaller size for emojis in public reported files */
+        }
+        .report-btn {
+            margin-left: 10px;  /* Add some spacing between the button and text */
+        }
+        .faq-link {
+            margin-top: 10px;
+            text-align: right;
+        }
+        .faq-link a {
+            color: #ffdd57;
+            text-decoration: underline;
+        }
+        .menu-list {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        .menu-list li {
+            margin-bottom: 10px;
+        }
+        .menu-list li a {
+            color: #ffdd57;
+            text-decoration: none;
+        }
+        .menu-list li a:hover {
+            text-decoration: underline;
+        }
+        .wide-card {
+            grid-column: 1 / -1;  /* Make this block span all columns */
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .chat-section {
+            background-color: #2d2d2d;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+        }
+        .chat-input {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 5px;
+            border: 1px solid #555;
+            background-color: #1e1e1e;
+            color: #f0f0f0;
+        }
+        .chat-log {
+            max-height: 200px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid #555;
+            background-color: #3a3a3a;
+            border-radius: 5px;
+        }
+        .help-section {
+            text-align: right;
+            margin-top: 10px;
+        }
+        .help-section a {
+            color: #ffdd57;
+            text-decoration: underline;
+        }
+        .file-dropdown {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <!-- Header Section -->
+        <h1 class="text-center mb-4">PDF Malware Scanner</h1>
+        <p class="text-center">Upload your file to scan for infections or malicious content and stay safe online.</p>
+
+        <!-- Grid Layout for Content -->
+        <div class="container-grid">
+            
+              <!-- Scan Block (Vertical Layout) -->
+            <div class="scan-block">
+                <form method="post" enctype="multipart/form-data" class="scan-form">
+                    <div class="form-group">
+                        <input type="file" name="file" class="form-control-file" required>
+                    </div>
+                    <!-- Add reCAPTCHA and disable the button initially -->
+                    <div class="g-recaptcha" data-sitekey="RECAPTCHA_SITE_KEY_HERE" data-callback="enableScanButton"></div>
+                    <button type="submit" class="btn btn-primary" id="scan-button" style="display: none;" disabled>Scan File</button> <!-- Initially hidden -->
+                </form>
+            </div>
+
+            <!-- Scan History Section -->
+            <div class="info-card">
+                <h2>Scan History</h2>
+                <div class="list-group">
+                    {% if scan_history %}
+                        {% for file_id, filename, is_infected, reported in scan_history %}
+                            <div class="history-item list-group-item d-flex justify-content-between align-items-center">
+                                <span>
+                                    {{ filename }}
+                                    {% if is_infected %}
+                                        <span class="text-danger alert-icon">⚠️ Infected</span>
+                                    {% else %}
+                                        <span class="text-success alert-icon">✅ Clean</span>
+                                    {% endif %}
+                                </span>
+                                <!-- Report Button -->
+                                {% if not reported %}
+                                    <form method="post" action="{{ url_for('report', file_id=file_id) }}" class="d-inline">
+                                        <button type="submit" class="btn btn-warning btn-sm report-btn">Report</button>
+                                    </form>
+                                {% else %}
+                                    <span class="badge badge-success">Reported</span>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="alert alert-info text-center">No scan history found for this session.</div>
+                    {% endif %}
+                </div>
+            </div>
+
+              <!-- AI Chat Section -->
+            <div class="chat-section">
+                <h2>Ask AI</h2>
+                <p>Ask the AI about the current scan or other related questions:</p>
+                <div class="file-dropdown">
+                    <select class="form-control" id="file-select">
+                        <option value="" disabled selected>Select a file to chat about</option>
+                        {% for file_id, filename, is_infected, reported in scan_history %}
+                            <option value="{{ file_id }}">{{ filename }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="chat-log" id="chat-log">
+                    <!-- Chat log will appear here -->
+                </div>
+                <input type="text" id="chat-input" class="chat-input" placeholder="Type your question...">
+                <!-- Add reCAPTCHA and disable the button initially -->
+                <div class="g-recaptcha" data-sitekey="RECAPTCHA_SITE_KEY_HERE" data-callback="enableSendButton"></div>
+                <button id="send-button" class="btn btn-primary mt-2" disabled>Send</button>
+            </div>
+
+            <!-- Instructions Section -->
+            <div class="info-card">
+                <h3>How to Use</h3>
+                <p>1. Select and Upload a File</p>
+                <p>2. Complete the CAPTCHA Verification</p>
+                <p>3. Initiate the Scan</p>
+                <p>4. Wait for the Scan to Complete</p>
+                <p>5. View Scan Results</p>
+                <p>6. Report Malicious Files (If Necessary)</p>
+                <p>7. Chat with AI for More Insights</p>
+            </div>
+
+
+            <!-- FAQ Section -->
+            <div class="faq-card">
+                <h2>Frequently Asked Questions (FAQ)</h2>
+                <div id="accordion">
+                    <div class="card">
+                        <div class="card-header" id="headingOne">
+                            <h5 class="mb-0">
+                                <button class="btn btn-link" data-toggle="collapse" data-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
+                                    What types of malware can this scanner detect?
+                                </button>
+                            </h5>
+                        </div>
+                        <div id="collapseOne" class="collapse show" aria-labelledby="headingOne" data-parent="#accordion">
+                            <div class="card-body">
+                                This scanner detects various types of malware that can be embedded in PDF files, such as JavaScript exploits, malicious links, hidden executables, and more.
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header" id="headingTwo">
+                            <h5 class="mb-0">
+                                <button class="btn btn-link collapsed" data-toggle="collapse" data-target="#collapseTwo" aria-expanded="false" aria-controls="collapseTwo">
+                                    How often should I scan my files?
+                                </button>
+                            </h5>
+                        </div>
+                        <div id="collapseTwo" class="collapse" aria-labelledby="headingTwo" data-parent="#accordion">
+                            <div class="card-body">
+                                It is recommended to scan files whenever you receive them from unknown sources or if you notice any suspicious activity on your device.
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header" id="headingThree">
+                            <h5 class="mb-0">
+                                <button class="btn btn-link collapsed" data-toggle="collapse" data-target="#collapseThree" aria-expanded="false" aria-controls="collapseThree">
+                                    Can I scan files other than PDFs?
+                                </button>
+                            </h5>
+                        </div>
+                        <div id="collapseThree" class="collapse" aria-labelledby="headingThree" data-parent="#accordion">
+                            <div class="card-body">
+                                Yes, the scanner supports other file types as well. However, it is primarily optimized for detecting malware in PDFs.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="faq-link">
+                    <a href="/faq">View More FAQs</a>
+                </div>
+            </div>
+
+            <!-- Public Reported Files List Section -->
+            <div class="info-card">
+                <h2>Public Reported Files</h2>
+                <p>Below is a list of files reported by users:</p>
+                <ul class="list-group">
+                    {% if reported_files %}
+                        {% for file_info in reported_files %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span>{{ file_info[1] }}</span> <!-- filename -->
+                                {% if file_info[2] %} <!-- is_infected -->
+                                    <span class="text-danger alert-icon">⚠️ Infected</span>
+                                {% else %}
+                                    <span class="text-success alert-icon">✅ Clean</span>
+                                {% endif %}
+                                <a href="{{ url_for('view_report', scan_id=file_info[0]) }}" class="btn btn-info btn-sm ml-3">View Report</a> <!-- Link to view the report -->
+                            </li>
+                        {% endfor %}
+                    {% else %}
+                        <div class="alert alert-info text-center">No files have been reported yet.</div>
+                    {% endif %}
+                </ul>
+            </div>
+
+            <!-- Privacy Policy and Terms Section -->
+            <div class="info-card wide-card">  <!-- Added "wide-card" class here -->
+                <h2>Privacy Policy and Terms</h2>
+                <ul class="menu-list">
+                    <li><a href="#">Privacy Policy</a></li>
+                    <li><a href="#">Terms and Conditions</a></li>
+                    <li><a href="#">Data Protection Policy</a></li>
+                    <li><a href="#">Acceptable Use Policy</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Footer Section -->
+        <footer class="mt-5 text-center">
+            <p>All scanned files are processed in real-time and not stored permanently. However, if a file is reported, the scan log along with its content becomes public. To request removal, please contact <a href="https://aswss.com/contact" target="_blank">ASWSS</a>.</p>
+            <p><a href="https://aswss.com" target="_blank">By A S W S S</a></p>
+        </footer>
+    </div>
+
+    <!-- Include Bootstrap JS and dependencies -->
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.3/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+    <!-- Include jQuery for handling chat functionality -->
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script>
+        let isProcessing = false;  // Variable to track AI processing state
+
+        $(document).ready(function() {
+            $('#send-button').on('click', function() {
+                if (isProcessing) return;  // Prevent sending new messages while processing
+
+                let fileId = $('#file-select').val();  // Get selected file_id
+                let question = $('#chat-input').val();  // Get input question
+
+                if (fileId && question) {
+                    // Set processing state to true
+                    isProcessing = true;
+                    
+                    // Disable the Send button and input to prevent multiple requests
+                    $('#send-button').prop('disabled', true);
+                    $('#chat-input').prop('disabled', true);
+
+                    // Show predefined messages while AI is processing
+                    displayProcessingMessages();
+
+                    $.ajax({
+                        url: '/chat_with_ai',
+                        method: 'POST',
+                        data: {
+                            file_id: fileId,
+                            question: question,
+                            'g-recaptcha-response': grecaptcha.getResponse()  // Get the reCAPTCHA response
+                        },
+                        success: function(response) {
+                            $('#chat-log').append('<div>' + response.response + '</div>');  // Append AI response
+                            $('#chat-input').val('');  // Clear the input field
+
+                            // Reset processing state
+                            isProcessing = false;
+
+                            // Re-enable the Send button and input after the request completes
+                            $('#send-button').prop('disabled', false);
+                            $('#chat-input').prop('disabled', false);
+                            grecaptcha.reset();  // Reset reCAPTCHA after request
+                        },
+                        error: function() {
+                            $('#chat-log').append('<div class="text-danger">Error in AI response. Please try again.</div>');  // Error handling
+
+                            // Reset processing state
+                            isProcessing = false;
+
+                            // Re-enable the Send button and input in case of an error
+                            $('#send-button').prop('disabled', false);
+                            $('#chat-input').prop('disabled', false);
+                            grecaptcha.reset();  // Reset reCAPTCHA after request
+                        }
+                    });
+                } else {
+                    alert('Please select a file and enter your question.');
+                }
+            });
+        });
+
+        // Function to enable Scan button after reCAPTCHA verification
+        function enableScanButton() {
+            $('#scan-button').prop('disabled', false).show();  // Show and enable the button
+        }
+
+        // Function to enable Send button after reCAPTCHA verification
+        function enableSendButton() {
+            $('#send-button').prop('disabled', false);
+        }
+
+        // Function to display predefined messages while AI is processing
+        function displayProcessingMessages() {
+            let messages = [
+                "Hello! I'm going to scan the file...",
+                "Analyzing the content for malware and suspicious elements...",
+                "This might take a moment, please be patient...",
+                "Still scanning... Almost there!"
+            ];
+
+            let index = 0;
+            let interval = setInterval(function() {
+                if (index < messages.length) {
+                    $('#chat-log').append('<div>' + messages[index] + '</div>');
+                    index++;
+                } else {
+                    clearInterval(interval);  // Stop messages when the list is exhausted
+                }
+            }, 3500);  // Show a message every 3 seconds
+        }
+    </script>
+</body>
+</html>
